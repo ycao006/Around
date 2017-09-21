@@ -3,16 +3,15 @@ package main
 import (
 	elastic "gopkg.in/olivere/elastic.v3"
 	"fmt"
+	"reflect"
 	"net/http"
 	"encoding/json"
-	"log"
 	"strconv"
-	"reflect"
-	"context"
-	"cloud.google.com/go/bigtable"
+	"log"
+	//"cloud.google.com/go/bigtable"
 	"github.com/pborman/uuid"
+	//"context"
 )
-
 
 type Location struct {
 	Lat float64 `json:"lat"`
@@ -45,7 +44,6 @@ func main() {
 		panic(err)
 		return
 	}
-
 	// Use the IndexExists service to check if a specified index exists.
 	exists, err := client.IndexExists(INDEX).Do()
 	if err != nil {
@@ -54,24 +52,23 @@ func main() {
 	if !exists {
 		// Create a new index.
 		mapping := `{
-                    "mappings":{
-                           "post":{
-                                  "properties":{
-                                         "location":{
-                                                "type":"geo_point"
-                                         }
-                                  }
-                           }
-                    }
-             }
-             `
+                        "mappings":{
+                                "post":{
+                                        "properties":{
+                                                "location":{
+                                                        "type":"geo_point"
+                                                }
+                                        }
+                                }
+                        }
+                }
+                `
 		_, err := client.CreateIndex(INDEX).Body(mapping).Do()
 		if err != nil {
 			// Handle error
 			panic(err)
 		}
 	}
-
 	fmt.Println("started-service")
 	http.HandleFunc("/post", handlerPost)
 	http.HandleFunc("/search", handlerSearch)
@@ -83,13 +80,10 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received one post request")
 	decoder := json.NewDecoder(r.Body)
 	var p Post
-
 	if err := decoder.Decode(&p); err != nil {
 		panic(err)
 		return
 	}
-	//
-	//fmt.Fprintf(w, "Post received: %s\n", p.Message)
 
 	// Create a client
 	es_client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
@@ -114,9 +108,8 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fmt.Printf("Post is saved to Index: %s\n", p.Message)
-
+	/*
 	ctx := context.Background()
-	// you must update project name here
 	bt_client, err := bigtable.NewClient(ctx, PROJECT_ID, BT_INSTANCE)
 	if err != nil {
 		panic(err)
@@ -126,7 +119,6 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 	tbl := bt_client.Open("post")
 	mut := bigtable.NewMutation()
 	t := bigtable.Now()
-
 	mut.Set("post", "user", t, []byte(p.User))
 	mut.Set("post", "message", t, []byte(p.Message))
 	mut.Set("location", "lat", t, []byte(strconv.FormatFloat(p.Location.Lat, 'f', -1, 64)))
@@ -138,17 +130,11 @@ func handlerPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Printf("Post is saved to BigTable: %s\n", p.Message)
-
-
+	*/
 }
 
 func handlerSearch(w http.ResponseWriter, r *http.Request) {
-	// Parse from body of request to get a json object.
-	fmt.Println("Received one search request")
-	//lat := r.URL.Query().Get("lat")
-	//lan := r.URL.Query().Get("lan")
-	//
-	//fmt.Fprintf(w, "lat:  %slon: %s\n", lat,lan)
+	fmt.Println("Received one request for search")
 	lat, _ := strconv.ParseFloat(r.URL.Query().Get("lat"), 64)
 	lon, _ := strconv.ParseFloat(r.URL.Query().Get("lon"), 64)
 	// range is optional
@@ -156,27 +142,6 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
 	if val := r.URL.Query().Get("range"); val != "" {
 		ran = val + "km"
 	}
-
-	fmt.Printf("Search received: %f %f %s", lat, lon, ran)
-
-	//// Return a fake post
-	//p := &Post{
-	//	User:"1111",
-	//	Message:"一生必去的100个地方",
-	//	Location: Location{
-	//		Lat:lat,
-	//		Lon:lon,
-	//	},
-	//}
-	//
-	//js, err := json.Marshal(p)
-	//if err != nil {
-	//	panic(err)
-	//	return
-	//}
-	//
-	//w.Header().Set("Content-Type", "application/json")
-	//w.Write(js)
 
 	// Create a client
 	client, err := elastic.NewClient(elastic.SetURL(ES_URL), elastic.SetSniff(false))
@@ -213,9 +178,9 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
 	var typ Post
 	var ps []Post
 	for _, item := range searchResult.Each(reflect.TypeOf(typ)) {
-		p := item.(Post) // p = (Post) item
+		p := item.(Post)
 		fmt.Printf("Post by %s: %s at lat %v and lon %v\n", p.User, p.Message, p.Location.Lat, p.Location.Lon)
-		// TODO(student homework): Perform filtering based on keywords such as web spam etc.
+		// TODO(vincent): Perform filtering based on keywords such as web spam etc.
 		ps = append(ps, p)
 
 	}
@@ -227,5 +192,4 @@ func handlerSearch(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(js)
-
 }
